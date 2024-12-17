@@ -24,46 +24,6 @@ model Anjing extends Hewan {
     tinggi Int
 }
 
-// model User {
-//     id   String @id @default(nanoid())
-//     name String
-// }
-
-// model Project {
-//     id     String @id
-//     status String
-//     type   String
-//     access String
-//     team   Team   @relation(fields: [teamId], references: [id])
-//     teamId String
-//     @@allow('update',
-//     // Kompleks permission matrix
-//         [status, type, access, team.members?[user == auth()]] in [
-//             ["ACTIVE", "PUBLIC", "OPEN", true],
-//             ["PRIVATE", "INTERNAL", "RESTRICTED", true],
-//             ["ARCHIVED", "PUBLIC", "READ_ONLY", false]
-//         ] ||
-//         auth().role == "ADMIN"
-//     )
-// }
-
-// model Project {
-//     id     String @id @default(uuid())
-//     status String
-//     type   String
-//     access String
-//     team   Team   @relation(fields: [teamId], references: [id])
-//     teamId String
-
-//     @@allow('update',
-//         [this.status, this.type, this.access, team.members?[user == auth()]] in [
-//             ["ACTIVE", "PUBLIC", "OPEN", true],
-//             ["PRIVATE", "INTERNAL", "RESTRICTED", true],
-//             ["ARCHIVED", "PUBLIC", "READ_ONLY", false]
-//         ] ||
-//         auth().role == "ADMIN"
-//     )
-// }
 
 model Project {
     id            String @id @default(uuid())

@@ -1,186 +1,116 @@
-# Please ⭐ us on the ZenStack repo if you like 🤝
+# Project Management System Documentation
 
-https://github.com/zenstackhq/zenstack
+## Overview
+This system implements a team-based project management platform similar to:
+- GitHub (repository & team management)
+- Jira (project states & access control)
+- Trello (board management)
+- Notion (workspace & team collaboration)
 
-# ZenStack SaaS Backend Template
+## Database
+Using SQLite with file storage at `./dev.db`
 
-SaaS Backend Template using express.js
+## Core Models
 
-## Features
+### Project
+A project represents a workspace or repository that belongs to a team.
 
--   Multi-tenant
--   Soft delete
--   Sharing by group
+#### States
+- **ACTIVE**: Ongoing projects
+- **PRIVATE**: Internal/confidential projects
+- **ARCHIVED**: Completed or inactive projects
 
-## Data Model
+#### Access Levels
+- **OPEN**: Accessible to all team members
+- **RESTRICTED**: Limited access
+- **READ_ONLY**: View-only access (typically for archived projects)
 
-In `schema.zmodel,` there are 4 models, and their relationships are as below:
-![data model](https://dev-to-uploads.s3.amazonaws.com/uploads/articles/8dx12h1fiumotwhhxr7z.png)
+#### Authorization Rules
+- **Read**: Any team member
+- **Create**: Only TEAM_LEADER
+- **Update**:
+  - ACTIVE projects: Any team member (if PUBLIC & OPEN)
+  - PRIVATE projects: Any team member (if INTERNAL & RESTRICTED)
+  - Archiving: Only TEAM_LEADER can change ACTIVE → ARCHIVED
+- **Delete**: Only TEAM_LEADER (only ARCHIVED projects)
+- **Project Secret**: Only visible to TEAM_LEADER
 
--   Organization is the top-level tenant. Any instance of User, post, and group belong to an organization.
--   One user could belong to multiple organizations and groups
--   One post belongs to a user and could belong to multiple groups.
+### Team
+Represents a group of users working together.
 
-## Permissions
+#### Authorization Rules
+- **Read**: Any authenticated user
+- **Create**: Any authenticated user
+- **Update**: Only TEAM_LEADER of the team
 
-Let’s take a look at all the permissions of the Post and how they could be expressed using ZenStack’s access policies.
+### Team Member
+Links users to teams with specific roles.
 
-💡 _You can find the detailed reference of access policies syntax below:
-[https://zenstack.dev/docs/reference/zmodel-language#access-policy](https://zenstack.dev/docs/reference/zmodel-language#access-policy)_
+#### Roles
+- TEAM_LEADER
+- MEMBER
+- GUEST
 
--   Create
+#### Authorization Rules
+- **Read**: Any authenticated user
+- **Create**: 
+  - ADMIN can create any member
+  - Users can create themselves as TEAM_LEADER
+- **Update/Delete**: Only ADMIN
 
-the owner must be set to the current user, and the organization must be set to one that the current user belongs to.
+### User
+System user with role-based access.
 
-```tsx
-@@allow('create', owner == auth() && org.members?[id == auth().id])
-```
+#### Roles
+- ADMIN: Full system access
+- USER: Basic access
 
--   Update
+#### Authorization Rules
+Currently allows all operations (temporary)
 
-    only the owner can update it and is not allowed to change the organization or owner
+## Common Use Cases
 
-    ```tsx
-    @@allow('update', owner == auth() && org.future().members?[id == auth().id] && future().owner == owner)
-    ```
+### Project Lifecycle
+1. TEAM_LEADER creates new project
+2. Team members collaborate on ACTIVE projects
+3. TEAM_LEADER can archive completed projects
+4. Archived projects become READ_ONLY
 
--   Read
+### Team Management
+1. Any authenticated user can create a team
+2. Creator becomes TEAM_LEADER
+3. TEAM_LEADER can manage team settings
+4. Members can join existing teams
 
-    -   allow the owner to read
-        ```tsx
-        @@allow('read', owner == auth())
-        ```
-    -   allow the member of the organization to read it if it’s public
-        ```tsx
-        @@allow('read', isPublic && org.members?[id == auth().id])
-        ```
-    -   allow the group members to read it
-        ```tsx
-        @@allow('read', groups?[users?[id == auth().id]])
-        ```
+## Similar Systems
+1. **GitHub**
+   - Repository management
+   - Team collaboration
+   - Public/Private access
+   - Archive functionality
 
--   Delete
+2. **Jira**
+   - Project states
+   - Team management
+   - Access control
+   - Role-based permissions
 
-    -   don’t allow delete
-        The operation is not allowed by default if no rule is specified for it.
-    -   The record is treated as deleted if `isDeleted` is true, aka soft delete.
-        ```tsx
-        @@deny('all', isDeleted == true)
-        ```
+3. **Trello**
+   - Board management
+   - Team collaboration
+   - Archive functionality
 
-You can see the complete data model together with the above access policies defined in the
+4. **Notion**
+   - Workspace management
+   - Team collaboration
+   - Access control
 
-```tsx
-abstract model organizationBaseEntity {
-    id String @id @default(uuid())
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
-    isDeleted Boolean @default(false) @omit
-    isPublic Boolean @default(false)
-    owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-    ownerId String
-    org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-    orgId String
-    groups Group[]
+## Security Considerations
+1. Role-based access control (RBAC)
+2. Team-based permissions
+3. Project state transitions
+4. Secure project secrets
+5. Member uniqueness per team
 
-    // when create, owner must be set to current user, and user must be in the organization
-    @@allow('create', owner == auth() && org.members?[id == auth().id])
-    // only the owner can update it and is not allowed to change the owner
-    @@allow('update', owner == auth() && org.members?[id == auth().id] && future().owner == owner)
-    // allow owner to read
-    @@allow('read', owner == auth())
-    // allow shared group members to read it
-    @@allow('read', groups?[users?[id == auth().id]])
-    // allow organization to access if public
-    @@allow('read', isPublic && org.members?[id == auth().id])
-    // can not be read if deleted
-    @@deny('all', isDeleted == true)
-}
-
-model Post extends organizationBaseEntity {
-    title String
-    content String
-}
-```
-
-### Model Inheritance
-
-You may be curious about why these rules are defined within the abstract `organizationBaseEntity` model rather than the specific **`Post`** model. That’s why I say it is **Scalable**. With ZenStack's model inheritance capability, all common permissions can be conveniently handled within the abstract base model.
-
-Consider the scenario where a newly hired developer needs to add a new **`ToDo`** model. He can effortlessly achieve this by simply extending the `organizationBaseEntity` :
-
-```tsx
-model ToDo extends organizationBaseEntity {
-    name String
-    isCompleted Boolean @default(false)
-}
-```
-
-All the multi-tenant, soft delete and sharing features will just work automatically. Additionally, if any specialized access control logic is required for **`ToDo`**, such as allowing shared individuals to update it, you can effortlessly add the corresponding policy rule within the **`ToDo`** model without concerns about breaking existing functionality:
-
-```tsx
-@@allow('update', groups?[users?[id == auth().id]] )
-```
-
-## Running
-
-1. Install dependencies
-
-```bash
-npm install
-```
-
-2. build
-
-```bash
-npm run build
-```
-
-3. seed data
-
-```bash
-npm run seed
-```
-
-4. start
-
-```bash
-npm run dev
-```
-
-## Testing
-
-The seed data is like below:
-
-![data](https://github.com/jiashengguo/my-blog-app/assets/16688722/6dfb2e8c-d1c3-4eec-8022-e03bf2dd42fd)
-
-So in the Prisma team, each user created a post:
-
--   **Join Discord** is not shared, so it could only be seen by Robin
--   **Join Slack** is shared in the group to which Robin belongs so that it can be seen by both Robin and Bryan.
--   **Follow Twitter** is a public one so that it could be seen by Robin, Bryan, and Gavin
-
-You could simply call the Post endpoint to see the result simulate different users:
-
-```tsx
-curl -H "X-USER-ID: robin@prisma.io" localhost:3000/api/post
-```
-
-💡 _It uses the plain text of the user id just for test convenience. In the real world, you should use a more secure way to pass IDs like JWT tokens._
-
-Based on the sample data, each user should see a different count of posts from 0 to 3.
-
-### Soft Delete
-
-Since it’s soft delete, the actual operation is to update `isDeleted` to true. Let’s delete the “Join Salck” post of Robin by running below:
-
-```tsx
-curl -X PUT \
--H "X-USER-ID: robin@prisma.io" -H "Content-Type: application/json" \
--d '{"data":{ "type":"post", "attributes":{  "isDeleted": true } } }'\
-localhost:3000/api/post/slack
-```
-
-After that, if you try to access the Post endpoint again, the result won’t contain the “Join Slack” post anymore. If you are interested in how it works under the hook, check out another post for it:
-
-[Soft Delete: Implementation Issues in Prisma and Solution in Zenstack](https://zenstack.dev/blog/soft-delete)
+## Additional Models
+The system also includes abstract animal models (Hewan, Kucing, Anjing) which appear to be separate from the main project management functionality.

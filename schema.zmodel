@@ -1,0 +1,164 @@
+datasource db {
+    provider="sqlite"
+    url="file:./dev.db"
+}
+
+generator client {
+    provider = "prisma-client-js"
+}
+
+abstract model Hewan {
+    id    String @id @default(uuid())  // Tambahkan ID unik!
+    nama  String
+    umur  Int
+    jenis String
+}
+
+model Kucing extends Hewan {
+    warnaBulu String
+    suara     String
+}
+
+model Anjing extends Hewan {
+    ras    String
+    tinggi Int
+}
+
+// model User {
+//     id   String @id @default(nanoid())
+//     name String
+// }
+
+// model Project {
+//     id     String @id
+//     status String
+//     type   String
+//     access String
+//     team   Team   @relation(fields: [teamId], references: [id])
+//     teamId String
+//     @@allow('update',
+//     // Kompleks permission matrix
+//         [status, type, access, team.members?[user == auth()]] in [
+//             ["ACTIVE", "PUBLIC", "OPEN", true],
+//             ["PRIVATE", "INTERNAL", "RESTRICTED", true],
+//             ["ARCHIVED", "PUBLIC", "READ_ONLY", false]
+//         ] ||
+//         auth().role == "ADMIN"
+//     )
+// }
+
+// model Project {
+//     id     String @id @default(uuid())
+//     status String
+//     type   String
+//     access String
+//     team   Team   @relation(fields: [teamId], references: [id])
+//     teamId String
+
+//     @@allow('update',
+//         [this.status, this.type, this.access, team.members?[user == auth()]] in [
+//             ["ACTIVE", "PUBLIC", "OPEN", true],
+//             ["PRIVATE", "INTERNAL", "RESTRICTED", true],
+//             ["ARCHIVED", "PUBLIC", "READ_ONLY", false]
+//         ] ||
+//         auth().role == "ADMIN"
+//     )
+// }
+
+model Project {
+    id            String @id @default(uuid())
+    status        String
+    type          String
+    access        String
+    projectSecret String @allow('read', team.members?[user == auth() && role == "TEAM_LEADER"]) @default(nanoid())
+    team          Team   @relation(fields: [teamId], references: [id])
+    teamId        String
+
+    @@allow('read', team.members?[user == auth()])
+
+    @@allow('create', 
+        team.members?[user == auth() && role == "TEAM_LEADER"]
+    )
+
+    @@allow('update',
+        (
+            (this.status == "ACTIVE" && this.type == "PUBLIC" && this.access == "OPEN" && this.team.members?[user == auth()]) ||
+            (this.status == "PRIVATE" && this.type == "INTERNAL" && this.access == "RESTRICTED" && this.team.members?[user == auth()]) ||
+            (this.status == "ARCHIVED" && this.type == "PUBLIC" && this.access == "READ_ONLY") ||
+    // Policy untuk mengizinkan archiving
+            (
+                this.status == "ACTIVE" && 
+                status == "ARCHIVED" && 
+                access == "READ_ONLY" && 
+                team.members?[user == auth() && role == "TEAM_LEADER"]
+            )
+        ) ||
+        auth().role == "ADMIN"
+    )
+
+    @@allow('delete', 
+        status == "ARCHIVED" && 
+        team.members?[user == auth() && role == "TEAM_LEADER"]
+    )
+}
+
+model Team {
+    id          String       @id @default(uuid())
+    name        String
+    description String?
+    projects    Project[]
+    members     TeamMember[]
+
+    @@allow('read', auth() != null)
+    @@allow('update', members?[user == auth() && role == "TEAM_LEADER"])
+    @@allow('create', auth() != null)  // Tambahkan ini
+}
+
+model TeamMember {
+    id     String @id @default(uuid())
+    team   Team   @relation(fields: [teamId], references: [id])
+    teamId String
+    user   User   @relation(fields: [userId], references: [id])
+    userId String
+    role   String  // e.g., "TEAM_LEADER", "MEMBER", "GUEST"
+   
+    // Memastikan satu user hanya bisa jadi member sekali di tim yang sama
+    @@unique([teamId, userId])
+
+    @@allow('read', auth() != null)
+
+    @@allow('create', 
+        auth() != null && 
+        (
+            auth().role == "ADMIN" ||
+            (userId == auth().id && role == "TEAM_LEADER")
+        )
+    )
+    @@allow('update,delete', auth().role == "ADMIN")
+}
+
+// model User {
+//     id    String       @id @default(uuid())
+//     email String       @unique
+//     name  String
+//     role  String      // e.g., "ADMIN", "USER"
+//     // Relasi ke TeamMember
+//     teams TeamMember[]
+// }
+
+model User {
+    id    String       @id @default(uuid())
+    email String       @unique
+    name  String
+    role  String      // e.g., "ADMIN", "USER"
+    type  String      // Tambahkan field type
+    teams TeamMember[]
+
+    // Tambahkan policy untuk CRUD operations
+    @@allow('all', true)  // Izinkan semua operasi untuk sementara
+    // Atau bisa lebih spesifik:
+    // @@allow('create', true)  // Izinkan create untuk siapa saja
+    // @@allow('read', true)    // Izinkan read untuk siapa saja
+    // @@allow('update', auth() != null && (auth().id == id || auth().role == "ADMIN"))
+    // @@allow('delete', auth() != null && auth().role == "ADMIN")
+}

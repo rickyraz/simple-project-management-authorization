@@ -1,0 +1,28 @@
+{
+    "name": "rest-express",
+    "version": "1.0.0",
+    "license": "MIT",
+    "scripts": {
+        "build": "zenstack generate && prisma db push",
+        "dev": "ts-node src/index.ts",
+        "seed": "prisma db seed",
+        "up": "npm i @zenstackhq/runtime@latest && npm i -D zenstack@latest"
+    },
+    "dependencies": {
+        "@prisma/client": "6.0.1",
+        "@zenstackhq/runtime": "^2.10.1",
+        "@zenstackhq/server": "^2.10.1",
+        "express": "4.21.2"
+    },
+    "devDependencies": {
+        "@types/express": "5.0.0",
+        "@types/node": "22.10.2",
+        "prisma": "6.0.1",
+        "ts-node": "10.9.2",
+        "typescript": "5.7.2",
+        "zenstack": "^2.10.1"
+    },
+    "prisma": {
+        "seed": "ts-node prisma/seed.ts"
+    }
+}
